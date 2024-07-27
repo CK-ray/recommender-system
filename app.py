@@ -1,5 +1,12 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+
+import db_operations
+from config import Config
+import jwt
+import bcrypt
+from functools import wraps
+import datetime
 import logging
 import api_responses
 from services.genre_distribution import genre_distribution_api
@@ -13,6 +20,9 @@ from services.feedback import update_feedback
 from services.conversational_qa import get_system_initiative, get_user_initiative
 
 app = Flask(__name__)
+app.config.from_object(Config)
+SECRET_KEY = app.config['SECRET_KEY']
+
 CORS(app)
 
 @app.route('/api/main_carousel_movies', methods=['GET'])
@@ -168,6 +178,64 @@ def user_initiative():
 
 
 
+
+def generate_token(user_id):
+    payload = {
+        'user_id': user_id,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)  # 令牌有效期为1天
+    }
+    token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+    return token
+
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            token = request.headers['Authorization'].split(" ")[1]
+
+        if not token:
+            return jsonify({'message': 'Token is missing!'}), 401
+
+        try:
+            data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            current_user = data['user_id']
+        except jwt.ExpiredSignatureError:
+            return jsonify({'message': 'Token has expired!'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'message': 'Token is invalid!'}), 401
+
+        return f(current_user, *args, **kwargs)
+
+    return decorated
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    auth_data = request.get_json()
+    username = auth_data.get('username')
+    password = auth_data.get('password')
+
+    user = db_operations.get_user_by_username(username)
+    if user and bcrypt.checkpw(password.encode('utf-8'), user[2].encode('utf-8')):  # 检查哈希密码
+        token = generate_token(user[0])
+        return jsonify({'token': token})
+
+    return jsonify({'message': 'Invalid credentials'}), 401
+
+
+# 示例受保护的路由
+@app.route('/protected', methods=['GET'])
+@token_required
+def protected_route(current_user):
+    return jsonify({'message': f'Hello, user {current_user}!'})
+
+@app.route('/api/interaction', methods=['POST'])
+@token_required
+def interaction(current_user):
+    data = request.json
+    return api_responses.handle_interaction(data, current_user)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)

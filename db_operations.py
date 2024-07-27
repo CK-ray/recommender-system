@@ -1,6 +1,7 @@
 import pymysql
 import bcrypt
 from datetime import datetime
+from sqlalchemy import create_engine, text
 def get_db_connection():
     return pymysql.connect(
         host="localhost",
@@ -341,3 +342,37 @@ def add_movie_rating(user_id, movie_id, rating):
     cursor.close()
     conn.close()
 
+
+from sqlalchemy import create_engine, text
+
+# 创建数据库连接
+engine = create_engine('mysql+pymysql://root:12345678@localhost/recommendation_db')
+
+
+def update_interaction(user_id, movie_id, interaction_type, duration):
+    query = """
+        INSERT INTO user_interactions (user_id, movie_id, interaction_type, duration)
+        VALUES (%s, %s, %s, %s)
+    """
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(query, (user_id, movie_id, interaction_type, duration))
+            conn.commit()
+            return cursor.rowcount
+    finally:
+        conn.close()
+
+
+def get_user_by_username(username):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT user_id, username, password, email, preferred_genres
+        FROM users
+        WHERE username = %s
+    """, (username,))
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return user

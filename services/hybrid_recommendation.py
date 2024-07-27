@@ -38,6 +38,11 @@ def get_user_feedback(user_id):
     user_feedback = pd.read_sql_query(query, engine, params=(user_id,))
     return user_feedback
 
+def get_user_interactions(user_id):
+    query = "SELECT movie_id, interaction_type, duration FROM user_interactions WHERE user_id = %s"
+    user_interactions = pd.read_sql_query(query, engine, params=(user_id,))
+    return user_interactions
+
 def create_movie_features(movies):
     movies.columns = movies.columns.str.replace(' ', '_')
     # 注意确保列名与数据库中的一致
@@ -48,7 +53,7 @@ def create_movie_features(movies):
     features.index = movies['movie_id']
     return features
 
-def compute_user_profile(user_ratings, movie_features, preferred_genres, favorite_movies):
+def compute_user_profile(user_ratings, movie_features, user_interactions, preferred_genres, favorite_movies):
     # 移除 user_ratings 中的重复 movie_id
     user_ratings = user_ratings.drop_duplicates(subset=['movie_id'])
 
@@ -67,6 +72,19 @@ def compute_user_profile(user_ratings, movie_features, preferred_genres, favorit
     user_profile = np.dot(user_ratings_aligned['rating'].values, user_ratings_aligned.drop(['movie_id', 'rating'], axis=1).values)
     user_profile = user_profile / np.sum(user_ratings_aligned['rating'].values)  # 归一化用户画像
 
+    # 考虑用户点击和浏览时长
+    for _, interaction in user_interactions.iterrows():
+        movie_id = interaction['movie_id']
+        if movie_id in movie_features.index:
+            weight = 1.0
+            if interaction['interaction_type'] == 'click':
+                weight = 1.0
+            elif interaction['interaction_type'] == 'view':
+                weight = interaction['duration'] / 60.0  # 将浏览时长转换为分钟作为权重
+            user_profile += weight * movie_features.loc[movie_id].values
+
+    user_profile = user_profile / (len(user_interactions) + 1)  # 归一化用户画像
+
     # 考虑用户偏好类型
     genre_columns = movie_features.columns
     genre_weights = np.zeros(len(genre_columns))
@@ -81,7 +99,11 @@ def compute_user_profile(user_ratings, movie_features, preferred_genres, favorit
     user_profile = (user_profile + genre_weights) / 2  # 将偏好类型权重与用户画像合并
 
     # 考虑用户喜好电影
-    favorite_movie_ids = [int(id.strip()) for id in favorite_movies.split(',')]
+    if favorite_movies:
+        favorite_movie_ids = [int(id.strip()) for id in favorite_movies.split(',')]
+    else:
+        favorite_movie_ids = []
+
     favorite_movie_features = movie_features.loc[movie_features.index.intersection(favorite_movie_ids)]
 
     if not favorite_movie_features.empty:
@@ -89,6 +111,7 @@ def compute_user_profile(user_ratings, movie_features, preferred_genres, favorit
         user_profile = (user_profile + favorite_profile) / 2  # 将喜好电影的特征与用户画像合并
 
     return user_profile
+
 
 def recommend_movies(user_profile, all_movies, movie_features, user_rated_movie_ids, user_feedback, top_n=16):
     similarities = cosine_similarity([user_profile], movie_features)[0]
@@ -126,13 +149,14 @@ def hybrid_recommendation(user_id):
     all_movies = get_all_movies()
     user_preferences = get_user_preferences(user_id)
     user_feedback = get_user_feedback(user_id)
+    user_interactions = get_user_interactions(user_id)
 
     if user_ratings.empty:
         return "No ratings available for this user."
 
     movie_features = create_movie_features(all_movies)
 
-    user_profile = compute_user_profile(user_ratings, movie_features, user_preferences['preferred_genres'], user_preferences['favorite_movies'])
+    user_profile = compute_user_profile(user_ratings, movie_features, user_interactions, user_preferences['preferred_genres'], user_preferences['favorite_movies'])
 
     content_recommendations = recommend_movies(user_profile, all_movies, movie_features, user_ratings['movie_id'].values.flatten(), user_feedback)
 

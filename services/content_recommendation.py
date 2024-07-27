@@ -76,7 +76,11 @@ def compute_user_profile(user_ratings, movie_features, preferred_genres, favorit
     user_profile = (user_profile + genre_weights) / 2  # 将偏好类型权重与用户画像合并
 
     # 考虑用户喜好电影
-    favorite_movie_ids = [int(id.strip()) for id in favorite_movies.split(',')]
+    if favorite_movies:
+        favorite_movie_ids = [int(id.strip()) for id in favorite_movies.split(',')]
+    else:
+        favorite_movie_ids = []
+
     favorite_movie_features = movie_features.loc[movie_features.index.intersection(favorite_movie_ids)]
 
     if not favorite_movie_features.empty:

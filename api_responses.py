@@ -2,6 +2,7 @@ from flask import jsonify, request
 import db_operations
 from decimal import Decimal
 import json
+
 def get_main_carousel_movies():
     movies = db_operations.fetch_main_carousel_movies()
     movie_list = []
@@ -296,4 +297,19 @@ def add_movie_rating():
     db_operations.add_movie_rating(user_id, movie_id, rating)
     return jsonify({"message": "Rating added successfully"})
 
+
+def handle_interaction(data, current_user):
+    user_id = current_user  # 使用当前用户ID
+    movie_id = data.get('movie_id')
+    interaction_type = data.get('interaction_type')
+    duration = data.get('duration')
+
+    if interaction_type not in ['click', 'view']:
+        return jsonify({'status': 'error', 'message': 'Invalid interaction type'}), 400
+
+    rows_affected = db_operations.update_interaction(user_id, movie_id, interaction_type, duration)
+    if rows_affected > 0:
+        return jsonify({'status': 'success', 'message': 'Interaction recorded'})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to record interaction'}), 500
 
