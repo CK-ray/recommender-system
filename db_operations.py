@@ -349,19 +349,31 @@ from sqlalchemy import create_engine, text
 engine = create_engine('mysql+pymysql://root:12345678@localhost/recommendation_db')
 
 
-def update_interaction(user_id, movie_id, interaction_type, duration):
-    query = """
-        INSERT INTO user_interactions (user_id, movie_id, interaction_type, duration)
-        VALUES (%s, %s, %s, %s)
-    """
+# def record_interaction(user_id, movie_id, interaction_type, duration):
+#     conn = get_db_connection()
+#     cursor = conn.cursor()
+#     query = """
+#         INSERT INTO user_interactions (user_id, movie_id, interaction_type, duration)
+#         VALUES (%s, %s, %s, %s)
+#     """
+#     cursor.execute(query, (user_id, movie_id, interaction_type, duration))
+#     conn.commit()
+#     cursor.close()
+#     conn.close()
+
+def log_interaction(user_id, movie_id, interaction_type, duration):
     conn = get_db_connection()
     try:
         with conn.cursor() as cursor:
-            cursor.execute(query, (user_id, movie_id, interaction_type, duration))
-            conn.commit()
-            return cursor.rowcount
+            sql = """
+                INSERT INTO user_interactions (user_id, movie_id, interaction_type, duration)
+                VALUES (%s, %s, %s, %s)
+            """
+            cursor.execute(sql, (user_id, movie_id, interaction_type, duration))
+        conn.commit()
     finally:
         conn.close()
+
 
 
 def get_user_by_username(username):
@@ -376,3 +388,28 @@ def get_user_by_username(username):
     cursor.close()
     conn.close()
     return user
+
+
+def check_user_by_username(username):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT user_id
+        FROM users
+        WHERE username = %s
+    """, (username,))
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return user
+
+def insert_new_user(username, hashed_password, email):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO users (username, password, email)
+        VALUES (%s, %s, %s)
+    """, (username, hashed_password, email))
+    conn.commit()
+    cursor.close()
+    conn.close()

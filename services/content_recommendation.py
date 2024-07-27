@@ -20,6 +20,27 @@ def get_user_ratings(user_id):
 
     return user_ratings
 
+
+def get_popular_movies(top_n=6):
+    query = """
+        SELECT m.movie_id, m.movie_title, m.poster_url, COUNT(r.rating) as rating_count
+        FROM movies m
+        JOIN ratings r ON m.movie_id = r.movie_id
+        GROUP BY m.movie_id, m.movie_title, m.poster_url
+        ORDER BY rating_count DESC
+        LIMIT %s
+    """
+    popular_movies = pd.read_sql_query(query, engine, params=(top_n,))
+    popular_movies['similarity'] = np.nan  # 添加一个相似度列，值为NaN
+    return popular_movies
+
+def get_random_movies(top_n=6):
+    query = "SELECT movie_id, movie_title, poster_url FROM movies ORDER BY RAND() LIMIT %s"
+    random_movies = pd.read_sql_query(query, engine, params=(top_n,))
+    random_movies['similarity'] = np.nan  # 添加一个相似度列，值为NaN
+    return random_movies
+
+
 def get_all_movies():
     query = "SELECT * FROM movies"
     all_movies = pd.read_sql_query(query, engine)
@@ -100,16 +121,23 @@ def content_based_recommendation(user_id):
     all_movies = get_all_movies()
     user_preferences = get_user_preferences(user_id)
 
-    if user_ratings.empty:
-        return "No ratings available for this user."
-
     movie_features = create_movie_features(all_movies)
 
-    user_profile = compute_user_profile(user_ratings, movie_features, user_preferences['preferred_genres'], user_preferences['favorite_movies'])
+    # 如果用户没有评分电影且没有偏好类型或喜好电影，返回一些热门电影或随机电影
+    if user_ratings.empty and not user_preferences['preferred_genres'] and not user_preferences['favorite_movies']:
+        return get_popular_movies()  # 或者 get_random_movies()
+
+    # 如果用户没有评分电影，直接基于偏好类型和喜好电影计算用户画像
+    if user_ratings.empty:
+        user_profile = compute_user_profile(pd.DataFrame(), movie_features, user_preferences['preferred_genres'], user_preferences['favorite_movies'])
+    else:
+        user_profile = compute_user_profile(user_ratings, movie_features, user_preferences['preferred_genres'], user_preferences['favorite_movies'])
 
     recommended_movies = recommend_movies(user_profile, all_movies, movie_features, user_ratings['movie_id'].values.flatten())
 
     return recommended_movies[['movie_id', 'movie_title', 'poster_url', 'similarity']]
+
+
 
 # 调试代码以检查数据的状态
 if __name__ == "__main__":

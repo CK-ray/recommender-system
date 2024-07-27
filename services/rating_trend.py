@@ -31,10 +31,10 @@ def preprocess_ratings_data(user_data, freq='M'):
 
     # 按选择的时间粒度进行分组，计算每个时间段的平均评分
     user_data.set_index('timestamp', inplace=True)
-    ratings_resampled = user_data['rating'].resample(freq).mean()
+    ratings_resampled = user_data['rating'].resample('ME').mean()
 
     # 处理缺失值（这里使用前向填充作为示例）
-    ratings_resampled.fillna(method='ffill', inplace=True)
+    ratings_resampled.ffill(inplace=True)
 
     return ratings_resampled
 

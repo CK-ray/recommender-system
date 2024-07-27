@@ -1,6 +1,5 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-
 import db_operations
 from config import Config
 import jwt
@@ -23,7 +22,46 @@ app = Flask(__name__)
 app.config.from_object(Config)
 SECRET_KEY = app.config['SECRET_KEY']
 
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
+
+
+# JWT生成函数
+def generate_token(user_id):
+    payload = {
+        'user_id': user_id,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)  # 令牌有效期为1天
+    }
+    token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+    return token
+
+# JWT验证装饰器
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            # print("Authorization header:", request.headers['Authorization'])
+            token = request.headers['Authorization'].split(" ")[1]
+
+        if not token:
+            return jsonify({'message': 'Token is missing!'}), 401
+
+        try:
+            data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            # print("Decoded JWT data:", data)
+            current_user = data['user_id']
+            # print(f"Token valid, current_user: {current_user}")
+        except jwt.ExpiredSignatureError:
+            # print("Token has expired")
+            return jsonify({'message': 'Token has expired!'}), 401
+        except jwt.InvalidTokenError:
+            # print("Token is invalid")
+            return jsonify({'message': 'Token is invalid!'}), 401
+
+        print("Token is valid, continuing with the request...")
+        return f(current_user, *args, **kwargs)
+
+    return decorated
 
 @app.route('/api/main_carousel_movies', methods=['GET'])
 def main_carousel_movies():
@@ -45,7 +83,6 @@ def rating_recommendations():
 def top_rated():
     return api_responses.get_all_rated_movies()
 
-
 @app.route('/api/movie/<int:movie_id>', methods=['GET'])
 def movie_details(movie_id):
     return api_responses.get_movie_details(movie_id)
@@ -66,81 +103,113 @@ def categories():
 def movies_by_category(category):
     return api_responses.get_movies_by_category(category)
 
-@app.route('/api/login', methods=['POST'])
-def login():
-    return api_responses.login_user()
-
-@app.route('/api/register', methods=['POST'])
-def register():
-    return api_responses.register_user()
 
 @app.route('/api/user/genres', methods=['POST'])
-def update_genres():
-    return api_responses.update_user_genres()
+@token_required
+def update_genres(current_user):
+    return api_responses.update_user_genres(current_user)
 
 @app.route('/api/user/update', methods=['PUT'])
-def update_user_info():
-    return api_responses.update_user_info()
+@token_required
+def update_user_info(current_user):
+    return api_responses.update_user_info(current_user)
 
 @app.route('/api/user/<int:user_id>', methods=['GET'])
-def get_user_info(user_id):
+@token_required
+def get_user_info(current_user, user_id):
+    if current_user != user_id:
+        return jsonify({'message': 'Access forbidden'}), 403
     return api_responses.get_user_info(user_id)
 
-
 @app.route('/api/user/favorite_movies/<int:user_id>', methods=['GET'])
-def get_favorite_movies(user_id):
+@token_required
+def get_favorite_movies(current_user, user_id):
+    if current_user != user_id:
+        return jsonify({'message': 'Access forbidden'}), 403
     return api_responses.get_favorite_movies(user_id)
 
 @app.route('/api/user/favorite_movies', methods=['PUT'])
-def update_favorite_movies():
-    return api_responses.update_favorite_movies()
+@token_required
+def update_favorite_movies(current_user):
+    return api_responses.update_favorite_movies(current_user)
 
 @app.route('/api/user/favorite_movies/remove', methods=['DELETE'])
-def remove_favorite_movie():
-    return api_responses.remove_favorite_movie()
+@token_required
+def remove_favorite_movie(current_user):
+    return api_responses.remove_favorite_movie(current_user)
 
 @app.route('/api/search', methods=['GET'])
 def search():
     return api_responses.search_movies()
 
 @app.route('/api/ratings', methods=['POST'])
-def add_rating():
-    return api_responses.add_movie_rating()
+@token_required
+def add_rating(current_user):
+    return api_responses.add_movie_rating(current_user)
 
 @app.route('/api/ratings/count', methods=['GET'])
 def ratings_count():
     return api_responses.get_ratings_count()
 
 @app.route('/user/<int:user_id>/genre_distribution')
-def genre_distribution(user_id):
+@token_required
+def genre_distribution(current_user, user_id):
+    print("Decoded JWT data in genre:", current_user)
+    if current_user != user_id:
+        return jsonify({'message': 'Access forbidden'}), 403
     return genre_distribution_api(user_id)
 
-
 @app.route('/user/<int:user_id>/rating_trend')
-def rating_trend(user_id):
+@token_required
+def rating_trend(current_user, user_id):
+    if current_user != user_id:
+        return jsonify({'message': 'Access forbidden'}), 403
     return rating_trend_api(user_id)
 
-
 @app.route('/user/<int:user_id>/viewing_frequency')
-def viewing_frequency(user_id):
+@token_required
+def viewing_frequency(current_user, user_id):
+    if current_user != user_id:
+        return jsonify({'message': 'Access forbidden'}), 403
     return viewing_frequency_api(user_id)
 
 @app.route('/user/<int:user_id>/viewing_time_period')
-def viewing_frequency_time_period(user_id):
+@token_required
+def viewing_frequency_time_period(current_user, user_id):
+    if current_user != user_id:
+        return jsonify({'message': 'Access forbidden'}), 403
     return viewing_frequency_by_time_period_api(user_id)
 
-
 @app.route('/user/<int:user_id>/most_watched_directors_actors')
-def most_watched_directors_actors(user_id):
+@token_required
+def most_watched_directors_actors(current_user, user_id):
+    if current_user != user_id:
+        return jsonify({'message': 'Access forbidden'}), 403
     return most_watched_directors_actors_api(user_id)
 
-@app.route('/user/<int:user_id>/content_based_recommendation')
-def content_based_recommendation_route(user_id):
+@app.route('/user/<int:user_id>/content_based_recommendation', methods=['GET'])
+@token_required
+def content_based_recommendation_route(current_user, user_id):
     recommendations = content_based_recommendation(user_id)
-    return jsonify(recommendations.to_dict(orient='records'))
+
+    if isinstance(recommendations, str):
+        # 如果 recommendations 是字符串，表示出现错误或没有推荐结果
+        return jsonify({"error": recommendations}), 500
+
+    try:
+        # 确保 recommendations 是一个 DataFrame
+        response = recommendations.to_dict(orient='records')
+    except AttributeError as e:
+        app.logger.error(f"Error converting recommendations to dict: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
+
+    return jsonify(response)
 
 @app.route('/user/<int:user_id>/hybrid_recommendation', methods=['GET'])
-def hybrid_recommendation_route(user_id):
+@token_required
+def hybrid_recommendation_route(current_user, user_id):
+    if current_user != user_id:
+        return jsonify({'message': 'Access forbidden'}), 403
     try:
         recommendations = hybrid_recommendation(user_id)
         return jsonify(recommendations.to_dict(orient='records'))
@@ -149,23 +218,21 @@ def hybrid_recommendation_route(user_id):
         return str(e), 500
 
 @app.route('/api/feedback', methods=['POST'])
-def handle_feedback():
+@token_required
+def handle_feedback(current_user):
     data = request.json
-    user_id = data.get('user_id')
     movie_id = data.get('movie_id')
     feedback = data.get('feedback')
 
-    if not user_id or not movie_id or feedback not in ['like', 'dislike']:
+    if not movie_id or feedback not in ['like', 'dislike']:
         return jsonify({'status': 'error', 'message': 'Invalid input'}), 400
 
     try:
-        update_feedback(user_id, movie_id, feedback)
+        update_feedback(current_user, movie_id, feedback)
         return jsonify({'status': 'success', 'message': 'Feedback recorded successfully'}), 200
     except Exception as e:
         logging.error(f"Error updating feedback: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
-
-
 
 @app.route('/api/system_initiative', methods=['GET'])
 def system_initiative():
@@ -175,67 +242,55 @@ def system_initiative():
 def user_initiative():
     return get_user_initiative()
 
-
-
-
-
-def generate_token(user_id):
-    payload = {
-        'user_id': user_id,
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)  # 令牌有效期为1天
-    }
-    token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
-    return token
-
-
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = None
-        if 'Authorization' in request.headers:
-            token = request.headers['Authorization'].split(" ")[1]
-
-        if not token:
-            return jsonify({'message': 'Token is missing!'}), 401
-
-        try:
-            data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-            current_user = data['user_id']
-        except jwt.ExpiredSignatureError:
-            return jsonify({'message': 'Token has expired!'}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({'message': 'Token is invalid!'}), 401
-
-        return f(current_user, *args, **kwargs)
-
-    return decorated
-
-
-@app.route('/login', methods=['POST'])
-def login():
-    auth_data = request.get_json()
-    username = auth_data.get('username')
-    password = auth_data.get('password')
+@app.route('/api/login', methods=['POST'])
+def login_user():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
 
     user = db_operations.get_user_by_username(username)
     if user and bcrypt.checkpw(password.encode('utf-8'), user[2].encode('utf-8')):  # 检查哈希密码
         token = generate_token(user[0])
-        return jsonify({'token': token})
+        user_info = {
+            "user_id": user[0],
+            "username": user[1],
+            "email": user[3],
+            "preferred_genres": user[4]
+        }
+        return jsonify({'token': token, 'user': user_info})
 
-    return jsonify({'message': 'Invalid credentials'}), 401
+    return jsonify({"error": "Invalid username or password"}), 401
 
 
-# 示例受保护的路由
-@app.route('/protected', methods=['GET'])
-@token_required
-def protected_route(current_user):
-    return jsonify({'message': f'Hello, user {current_user}!'})
+
+
+@app.route('/api/register', methods=['POST'])
+def register_user():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    email = data.get('email')
+
+    # 先检查是否存在相同的用户名
+    existing_user = db_operations.get_user_by_username(username)
+    if existing_user:
+        return jsonify({"error": "Username already exists"}), 409
+
+    # 哈希化密码
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    db_operations.insert_new_user(username, hashed_password.decode('utf-8'), email)
+    return jsonify({"message": "User registered successfully"})
+
 
 @app.route('/api/interaction', methods=['POST'])
 @token_required
 def interaction(current_user):
-    data = request.json
-    return api_responses.handle_interaction(data, current_user)
+    return api_responses.interaction(current_user)
+
+
+
+
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)

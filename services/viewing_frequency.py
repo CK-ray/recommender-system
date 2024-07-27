@@ -74,7 +74,7 @@ def viewing_frequency_api(user_id):
         user_data = get_recent_viewing_data(user_id)
 
         # 调试信息
-        print(f"User {user_id} has {len(user_data)} viewing records in the last 3 months.")
+        # print(f"User {user_id} has {len(user_data)} viewing records in the last 3 months.")
 
         # 如果没有数据，打印并返回
         if user_data.empty:
@@ -83,11 +83,11 @@ def viewing_frequency_api(user_id):
 
         # 数据预处理
         monthly_viewings = preprocess_viewing_data(user_data)
-        print(f"Monthly viewings:\n{monthly_viewings.head()}")
+        # print(f"Monthly viewings:\n{monthly_viewings.head()}")
 
         # 生成观影频率条形图
         img = generate_viewing_frequency_barchart(monthly_viewings)
-        print(f"Barchart generated successfully.")
+        # print(f"Barchart generated successfully.")
 
         return send_file(img, mimetype='image/png')
     except Exception as e:

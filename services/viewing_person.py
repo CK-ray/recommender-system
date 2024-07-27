@@ -87,21 +87,21 @@ def most_watched_directors_actors_api(user_id):
         user_data = get_recent_viewing_data(user_id)
 
         # 调试信息
-        print(f"User {user_id} has {len(user_data)} viewing records in the last 6 months.")
+        # print(f"User {user_id} has {len(user_data)} viewing records in the last 6 months.")
 
         # 如果没有数据，打印并返回
         if user_data.empty:
-            print(f"No viewing data for user {user_id} in the last 6 months.")
+            # print(f"No viewing data for user {user_id} in the last 6 months.")
             return "No viewing data available for the specified period."
 
         # 数据预处理
         director_counts, actor_counts = preprocess_directors_and_actors(user_data)
-        print(f"Director counts:\n{director_counts.head()}")
-        print(f"Actor counts:\n{actor_counts.head()}")
+        # print(f"Director counts:\n{director_counts.head()}")
+        # print(f"Actor counts:\n{actor_counts.head()}")
 
         # 生成导演和演员的组合词云图
         img = generate_combined_wordcloud(director_counts, actor_counts)
-        print(f"Combined wordcloud generated successfully.")
+        # print(f"Combined wordcloud generated successfully.")
 
         return send_file(img, mimetype='image/png')
     except Exception as e:

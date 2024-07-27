@@ -81,20 +81,20 @@ def viewing_frequency_by_time_period_api(user_id):
         user_data = get_recent_viewing_data(user_id)
 
         # 调试信息
-        print(f"User {user_id} has {len(user_data)} viewing records in the last 6 months.")
+        # print(f"User {user_id} has {len(user_data)} viewing records in the last 6 months.")
 
         # 如果没有数据，打印并返回
         if user_data.empty:
-            print(f"No viewing data for user {user_id} in the last 6 months.")
+            # print(f"No viewing data for user {user_id} in the last 6 months.")
             return "No viewing data available for the specified period."
 
         # 数据预处理
         time_period_viewings = preprocess_viewing_data_by_time_period(user_data)
-        print(f"Time period viewings:\n{time_period_viewings.head()}")
+        # print(f"Time period viewings:\n{time_period_viewings.head()}")
 
         # 生成观影频率条形图（按时间段）
         img = generate_viewing_frequency_barchart_by_time_period(time_period_viewings)
-        print(f"Barchart by time period generated successfully.")
+        # print(f"Barchart by time period generated successfully.")
 
         return send_file(img, mimetype='image/png')
     except Exception as e:

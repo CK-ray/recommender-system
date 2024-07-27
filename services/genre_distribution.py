@@ -44,11 +44,11 @@ def genre_distribution_api(user_id):
     """
 
     try:
-        print("Executing query with user_id:", user_id)
+        # print("Executing query with user_id:", user_id)
         user_data = pd.read_sql_query(query, engine, params=(user_id,))
-        print("Query executed successfully")
+        # print("Query executed successfully")
     except Exception as e:
-        print("Error executing query:", e)
+        # print("Error executing query:", e)
         return str(e)
 
     try:

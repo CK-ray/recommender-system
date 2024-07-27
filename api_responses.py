@@ -1,5 +1,8 @@
+import logging
+
 from flask import jsonify, request
 import db_operations
+import bcrypt
 from decimal import Decimal
 import json
 
@@ -52,7 +55,6 @@ def get_highest_rated_movies():
         movie_list.append(movie_dict)
     return jsonify(movie_list)
 
-
 def get_all_rated_movies():
     movies = db_operations.fetch_all_rated_movies()
     movie_list = []
@@ -103,14 +105,12 @@ def get_movie_details(movie_id):
     }
     return jsonify(movie_dict)
 
-
 def get_movie_average_rating(movie_id):
     avg_rating = db_operations.fetch_movie_average_rating(movie_id)
     if avg_rating is None or avg_rating[0] is None:
         return jsonify({"movie_id": movie_id, "avg_rating": None}), 404
 
     return jsonify({"movie_id": movie_id, "avg_rating": float(avg_rating[0])})
-
 
 def get_movie_trailer(movie_id):
     trailers = db_operations.fetch_movie_trailer(movie_id)
@@ -161,6 +161,7 @@ def login_user():
         return jsonify({"error": "Invalid username or password"}), 401
 
 
+
 def register_user():
     data = request.json
     username = data.get('username')
@@ -172,25 +173,25 @@ def register_user():
     if existing_user:
         return jsonify({"error": "Username already exists"}), 409
 
-    db_operations.insert_new_user(username, password, email)
+    # 哈希密码
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+    db_operations.insert_new_user(username, hashed_password.decode('utf-8'), email)
     return jsonify({"message": "User registered successfully"})
 
 
-def update_user_genres():
+def update_user_genres(current_user):
     data = request.json
-    user_id = data.get('user_id')
     preferred_genres = data.get('preferred_genres')
 
-    if not user_id or not preferred_genres:
+    if not preferred_genres:
         return jsonify({"error": "Invalid input"}), 400
 
-    db_operations.update_user_preferred_genres(user_id, preferred_genres)
+    db_operations.update_user_preferred_genres(current_user, preferred_genres)
     return jsonify({"message": "User preferred genres updated successfully"})
 
-
-
-def get_user_info(user_id):
-    user = db_operations.get_user_info(user_id)
+def get_user_info(current_user):
+    user = db_operations.get_user_info(current_user)
     if user:
         user_dict = {
             "user_id": user[0],
@@ -203,52 +204,45 @@ def get_user_info(user_id):
     else:
         return jsonify({"error": "User not found"}), 404
 
-def update_user_info():
+def update_user_info(current_user):
     data = request.json
-    user_id = data.get('user_id')
     username = data.get('username')
     password = data.get('password')  # 新密码（如果有的话）
     email = data.get('email')
     preferred_genres = data.get('preferred_genres')
 
-    if not user_id or not username or not email or not preferred_genres:
+    if not username or not email or not preferred_genres:
         return jsonify({"error": "Invalid input"}), 400
 
-    db_operations.update_user_info(user_id, username, password, email, preferred_genres)
+    db_operations.update_user_info(current_user, username, password, email, preferred_genres)
     return jsonify({"message": "User information updated successfully"})
 
-def get_favorite_movies(user_id):
-    favorite_movies = db_operations.get_favorite_movies(user_id)
+def get_favorite_movies(current_user):
+    favorite_movies = db_operations.get_favorite_movies(current_user)
     if favorite_movies:
         return jsonify({"favorite_movies": favorite_movies[0]})
     else:
         return jsonify({"error": "User not found"}), 404
-def update_favorite_movies():
+
+def update_favorite_movies(current_user):
     data = request.json
-    user_id = data.get('user_id')
     favorite_movies = data.get('favorite_movies')
 
-    if not user_id or favorite_movies is None:
+    if favorite_movies is None:
         return jsonify({"error": "Invalid input"}), 400
 
-    db_operations.update_favorite_movies(user_id, favorite_movies)
+    db_operations.update_favorite_movies(current_user, favorite_movies)
     return jsonify({"message": "Favorite movies updated successfully"})
 
-
-def remove_favorite_movie():
+def remove_favorite_movie(current_user):
     data = request.json
-    user_id = data.get('user_id')
     movie_id = data.get('movie_id')
 
-    if not user_id or not movie_id:
+    if not movie_id:
         return jsonify({"error": "Invalid input"}), 400
 
-    db_operations.remove_favorite_movie(user_id, movie_id)
+    db_operations.remove_favorite_movie(current_user, movie_id)
     return jsonify({"message": "Favorite movie removed successfully"})
-
-
-
-
 
 def search_movies():
     query = request.args.get('query')
@@ -269,7 +263,6 @@ def search_movies():
 
     return jsonify(movie_list)
 
-
 def get_ratings_count():
     ratings_count = db_operations.get_ratings_count()
     ratings_list = []
@@ -282,34 +275,27 @@ def get_ratings_count():
 
     return jsonify(ratings_list)
 
-from flask import request, jsonify
-import db_operations
-
-def add_movie_rating():
+def add_movie_rating(current_user):
     data = request.json
-    user_id = data.get('user_id')
     movie_id = data.get('movie_id')
     rating = data.get('rating')
 
-    if not user_id or not movie_id or rating is None:
+    if not movie_id or rating is None:
         return jsonify({"error": "Invalid input"}), 400
 
-    db_operations.add_movie_rating(user_id, movie_id, rating)
+    db_operations.add_movie_rating(current_user, movie_id, rating)
     return jsonify({"message": "Rating added successfully"})
 
-
-def handle_interaction(data, current_user):
-    user_id = current_user  # 使用当前用户ID
+def interaction(current_user):
+    data = request.get_json()
     movie_id = data.get('movie_id')
     interaction_type = data.get('interaction_type')
-    duration = data.get('duration')
+    duration = data.get('duration', 0)  # 默认为0
 
-    if interaction_type not in ['click', 'view']:
-        return jsonify({'status': 'error', 'message': 'Invalid interaction type'}), 400
+    if not movie_id or not interaction_type:
+        return jsonify({"message": "movie_id and interaction_type are required"}), 400
 
-    rows_affected = db_operations.update_interaction(user_id, movie_id, interaction_type, duration)
-    if rows_affected > 0:
-        return jsonify({'status': 'success', 'message': 'Interaction recorded'})
-    else:
-        return jsonify({'status': 'error', 'message': 'Failed to record interaction'}), 500
+    # logging.info(f"Logging interaction: user_id={current_user}, movie_id={movie_id}, interaction_type={interaction_type}, duration={duration}")
 
+    db_operations.log_interaction(current_user, movie_id, interaction_type, duration)
+    return jsonify({"message": "Interaction logged successfully"}), 200
