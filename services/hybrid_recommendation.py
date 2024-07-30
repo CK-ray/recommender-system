@@ -73,20 +73,20 @@ def compute_user_profile(user_ratings, movie_features, user_interactions, prefer
     movie_features = movie_features[~movie_features.index.duplicated(keep='first')]
 
     # 过滤 movie_features 以仅包含用户评分中存在的电影ID
-    user_movie_features = movie_features.loc[movie_features.index.intersection(user_movie_ids)]
+    movie_features_rated = movie_features.loc[movie_features.index.intersection(user_movie_ids)]
 
     # 使用 merge 方法对齐 user_ratings 和 user_movie_features
-    user_ratings_aligned = user_ratings[['movie_id', 'rating']].merge(user_movie_features, left_on='movie_id',
+    user_ratings_merge = user_ratings[['movie_id', 'rating']].merge(movie_features_rated, left_on='movie_id',
                                                                       right_index=True)
 
-    if len(user_ratings_aligned) == 1:
-        user_profile = user_ratings_aligned.drop(['movie_id', 'rating'], axis=1).values[0]
+    if len(user_ratings_merge) == 1:
+        user_profile = user_ratings_merge.drop(['movie_id', 'rating'], axis=1).values[0]
     else:
-        user_profile = np.dot(user_ratings_aligned['rating'].values,
-                              user_ratings_aligned.drop(['movie_id', 'rating'], axis=1).values)
-        user_profile = user_profile / np.sum(user_ratings_aligned['rating'].values)  # 归一化用户画像
+        user_profile = np.dot(user_ratings_merge['rating'].values,
+                              user_ratings_merge.drop(['movie_id', 'rating'], axis=1).values)
+        user_profile = user_profile / np.sum(user_ratings_merge['rating'].values)
 
-    # 考虑用户点击和浏览时长
+    # Consider user clicks and viewing time
     for _, interaction in user_interactions.iterrows():
         movie_id = interaction['movie_id']
         if movie_id in movie_features.index:
@@ -94,12 +94,12 @@ def compute_user_profile(user_ratings, movie_features, user_interactions, prefer
             if interaction['interaction_type'] == 'click':
                 weight = 1.0
             elif interaction['interaction_type'] == 'view':
-                weight = interaction['duration'] / 60.0  # 将浏览时长转换为分钟作为权重
+                weight = interaction['duration'] / 60.0
             user_profile += weight * movie_features.loc[movie_id].values
 
-    user_profile = user_profile / (len(user_interactions) + 1)  # 归一化用户画像
+    user_profile = user_profile / (len(user_interactions) + 1)  # Normalized user profile
 
-    # 考虑用户偏好类型
+    # user genre
     genre_columns = movie_features.columns
     genre_weights = np.zeros(len(genre_columns))
 
@@ -109,8 +109,8 @@ def compute_user_profile(user_ratings, movie_features, user_interactions, prefer
             genre_index = genre_columns.get_loc(genre)
             genre_weights[genre_index] = 1
 
-    genre_weights = genre_weights / np.sum(genre_weights)  # 归一化偏好权重
-    user_profile = (user_profile + genre_weights) / 2  # 将偏好类型权重与用户画像合并
+    genre_weights = genre_weights / np.sum(genre_weights)
+    user_profile = (user_profile + genre_weights) / 2
 
     # 考虑用户喜好电影
     if favorite_movies:
@@ -122,7 +122,7 @@ def compute_user_profile(user_ratings, movie_features, user_interactions, prefer
 
     if not favorite_movie_features.empty:
         favorite_profile = favorite_movie_features.mean(axis=0).values
-        user_profile = (user_profile + favorite_profile) / 2  # 将喜好电影的特征与用户画像合并
+        user_profile = (user_profile + favorite_profile) / 2  # Merge the movie preferences with the user profile
 
     return user_profile
 
@@ -135,9 +135,11 @@ def recommend_movies(user_profile, all_movies, movie_features, user_rated_movie_
     for _, row in user_feedback.iterrows():
         if (row['movie_id'] in all_movies['movie_id'].values):
             if row['feedback'] == 'like':
-                all_movies.loc[all_movies['movie_id'] == row['movie_id'], 'similarity'] *= 1.5
+                all_movies.loc[all_movies['movie_id'] ==
+                               row['movie_id'], 'similarity'] *= 1.5
             elif row['feedback'] == 'dislike':
-                all_movies.loc[all_movies['movie_id'] == row['movie_id'], 'similarity'] *= 0.5
+                all_movies.loc[all_movies['movie_id'] ==
+                               row['movie_id'], 'similarity'] *= 0.5
 
     recommended_movies = all_movies[~all_movies['movie_id'].isin(user_rated_movie_ids)].sort_values(by='similarity',
                                                                                                     ascending=False).head(

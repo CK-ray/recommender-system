@@ -2,7 +2,7 @@ import pandas as pd
 from sqlalchemy import create_engine
 import matplotlib
 
-matplotlib.use('Agg')  # 设置Matplotlib后端为Agg
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
 from flask import send_file
@@ -25,13 +25,13 @@ def get_user_ratings(user_id):
     return user_data
 
 
-def preprocess_ratings_data(user_data, freq='M'):
+def preprocess_ratings_data(user_data, freq='D'):
     # 将时间戳转换为日期时间格式
     user_data['timestamp'] = pd.to_datetime(user_data['timestamp'])
 
     # 按选择的时间粒度进行分组，计算每个时间段的平均评分
     user_data.set_index('timestamp', inplace=True)
-    ratings_resampled = user_data['rating'].resample('ME').mean()
+    ratings_resampled = user_data['rating'].resample(freq).mean()
 
     # 处理缺失值（这里使用前向填充作为示例）
     ratings_resampled.ffill(inplace=True)
@@ -43,7 +43,7 @@ def generate_rating_trend_chart(ratings_resampled):
     plt.figure(figsize=(10, 6))
     plt.plot(ratings_resampled.index, ratings_resampled.values, marker='o', linestyle='-')
     plt.title('Rating Trend Over Time')
-    plt.xlabel('Time')
+    plt.xlabel('Date')
     plt.ylabel('Average Rating')
     plt.grid(True)
 
@@ -62,7 +62,7 @@ def rating_trend_api(user_id):
         user_data = get_user_ratings(user_id)
 
         # 数据预处理
-        ratings_resampled = preprocess_ratings_data(user_data, freq='M')
+        ratings_resampled = preprocess_ratings_data(user_data, freq='D')
 
         # 生成评分趋势图表
         img = generate_rating_trend_chart(ratings_resampled)

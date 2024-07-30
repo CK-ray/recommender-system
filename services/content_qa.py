@@ -74,7 +74,7 @@ def content_based_recommendation(genre_input):
     if genre not in movies.columns:
         raise ValueError(f"Genre '{genre}' not found in movie dataset columns.")
 
-    genre_movies = movies[movies[genre] == 1].reset_index(drop=True)  # 重置索引，确保索引一致
+    genre_movies = movies[movies[genre] == 1].reset_index(drop=True)  # Reset the index to ensure consistency
     if genre_movies.empty:
         return None
 

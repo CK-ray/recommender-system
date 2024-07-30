@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import io
 from flask import send_file
 
-# 创建数据库连接
+
 engine = create_engine('mysql+pymysql://root:12345678@localhost/recommendation_db')
 
 
@@ -52,35 +52,33 @@ def genre_distribution_api(user_id):
         return str(e)
 
     try:
-        # 将电影类型列筛选出来
         genre_columns = [
             'Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Documentary', 'Drama',
             'Family', 'Fantasy', 'History', 'Horror', 'Music', 'Mystery', 'Romance',
             'Science Fiction', 'TV Movie', 'Thriller', 'War', 'Western'
         ]
 
-        # 计算每种类型的观影数量
         genre_counts = user_data[genre_columns].sum().sort_values(ascending=False)
 
-        # 计算总数和百分比
         total_count = genre_counts.sum()
         genre_percentages = genre_counts / total_count * 100
 
-        # 将百分比小于等于3%的类型归为“其他类型（Other Genres）”
+        # The types with a percentage of less than or equal to 4% are classified as "Other Genres"
         other_genres_count = genre_counts[genre_percentages <= 4].sum()
         genre_counts = genre_counts[genre_percentages > 4]
         genre_counts['Other Genres'] = other_genres_count
 
-        # 重新计算百分比
+        # Recalculate Percentage
         genre_percentages = genre_counts / genre_counts.sum() * 100
 
-        # 生成图表
+        # Generate chart
         plt.figure(figsize=(10, 6))
-        genre_counts.plot.pie(autopct='%1.1f%%', startangle=140, colors=plt.cm.Paired(range(len(genre_counts))))
+        genre_counts.plot.pie(autopct='%1.1f%%', startangle=140,
+                              colors=plt.cm.Paired(range(len(genre_counts))))
         plt.title('Genre Distribution')
         plt.ylabel('')
 
-        # 将图表保存到字节流中
+        # Save the chart to a byte stream
         img = io.BytesIO()
         plt.savefig(img, format='png')
         img.seek(0)

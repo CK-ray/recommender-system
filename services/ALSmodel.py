@@ -1,9 +1,10 @@
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, IntegerType, FloatType
 from pyspark.ml.evaluation import RegressionEvaluator
 import numpy as np
+import collections
 
 # 创建数据库连接
 engine = create_engine('mysql+pymysql://root:12345678@localhost/recommendation_db')
@@ -13,11 +14,10 @@ spark = SparkSession.builder \
     .appName("MovieRecommendation") \
     .config("spark.driver.bindAddress", "127.0.0.1") \
     .config("spark.driver.host", "127.0.0.1") \
-    .config("spark.executor.bindAddress", "127.0.0.1") \
-    .config("spark.executor.host", "127.0.0.1") \
-    .config("spark.some.config.option", "some-value") \
+    .config("spark.executor.memory", "4g") \
+    .config("spark.executor.cores", "2") \
+    .config("spark.sql.shuffle.partitions", "10") \
     .getOrCreate()
-
 
 def load_and_clean_data():
     # 从数据库加载评分数据
@@ -27,7 +27,6 @@ def load_and_clean_data():
     # 数据清洗
     ratings = ratings.dropna()
     ratings = ratings[(ratings['rating'] >= 1) & (ratings['rating'] <= 10)]
-
     ratings = ratings.drop_duplicates(subset=['user_id', 'movie_id'])
 
     # 数据类型转换
@@ -37,17 +36,16 @@ def load_and_clean_data():
 
     # 将Pandas DataFrame转换为Spark DataFrame
     ratings_spark = spark.createDataFrame(ratings)
-
+    ratings_spark.cache()  # 缓存数据
     return ratings_spark
 
-
 class ALSManual:
-    def __init__(self, rank=10, maxIter=10, regParam=0.1, alpha=1.0, tol=1e-6):
+    def __init__(self, rank=10, maxIter=5, regParam=0.1, tol=1e-4, alpha=0.01):
         self.rank = rank
         self.maxIter = maxIter
         self.regParam = regParam
-        self.alpha = alpha
         self.tol = tol
+        self.alpha = alpha  # 学习率
 
     def fit(self, ratings):
         self.ratings = ratings.collect()  # Collect to driver
@@ -66,10 +64,11 @@ class ALSManual:
 
         for i in range(self.maxIter):
             self.update()
+            self.gradient_update()  # 引入梯度更新
+            if self.compute_loss() < self.tol:
+                break
 
     def update(self):
-        import collections
-
         user_ratings = collections.defaultdict(list)
         item_ratings = collections.defaultdict(list)
 
@@ -100,6 +99,32 @@ class ALSManual:
                 b += rating * user_factor
             self.item_factors[item_idx] = np.linalg.solve(A + self.regParam * np.eye(self.rank), b)
 
+    def gradient_update(self):
+        for r in self.ratings:
+            user_idx = self.user_map[r['user_id']]
+            item_idx = self.item_map[r['movie_id']]
+            rating = r['rating']
+            prediction = np.dot(self.user_factors[user_idx],
+                                self.item_factors[item_idx])
+            error = rating - prediction
+            self.user_factors[user_idx]\
+                += (self.alpha * error *
+                    self.item_factors[item_idx])
+            self.item_factors[item_idx] \
+                += (self.alpha * error *
+                    self.user_factors[user_idx])
+
+    def compute_loss(self):
+        loss = 0
+        for r in self.ratings:
+            user_idx = self.user_map[r['user_id']]
+            item_idx = self.item_map[r['movie_id']]
+            rating = r['rating']
+            prediction = np.dot(self.user_factors[user_idx], self.item_factors[item_idx])
+            loss += (rating - prediction) ** 2
+        loss += self.regParam * (np.sum(self.user_factors ** 2) + np.sum(self.item_factors ** 2))
+        return loss
+
     def transform(self, test_data):
         predictions = []
         for row in test_data.collect():
@@ -107,7 +132,8 @@ class ALSManual:
             movie_id = row['movie_id']
             rating = row['rating']
             prediction = self.predict(user_id, movie_id)
-            predictions.append((user_id, movie_id, rating, prediction))
+            if prediction is not None:  # 忽略 None 值
+                predictions.append((user_id, movie_id, rating, prediction))
 
         schema = StructType([
             StructField("user_id", IntegerType(), True),
@@ -126,7 +152,6 @@ class ALSManual:
         else:
             return None
 
-
 def als_model_train():
     # 加载并清洗数据
     ratings_spark = load_and_clean_data()
@@ -135,7 +160,7 @@ def als_model_train():
     training, test = ratings_spark.randomSplit([0.8, 0.2])
 
     # 构建手动ALS模型
-    als_manual = ALSManual(maxIter=10, regParam=0.1)
+    als_manual = ALSManual(maxIter=5, regParam=0.1)
     als_manual.fit(training)
 
     # 在测试集上进行预测
@@ -150,7 +175,6 @@ def als_model_train():
     model = als_manual
     return model
 
-
 def als_recommend(user_id, model, n_recommendations=6):
     user_idx = model.user_map.get(user_id)
     if user_idx is None:
@@ -163,13 +187,11 @@ def als_recommend(user_id, model, n_recommendations=6):
     recommendations = [model.items[i] for i in item_indices]
     return recommendations
 
-
 def main():
     model = als_model_train()
-    user_id = 6 # 假设测试用户ID为1
+    user_id = 6  # 假设测试用户ID为6
     recommendations = als_recommend(user_id, model, n_recommendations=6)
     print(f"Recommendations for user {user_id}: {recommendations}")
-
 
 if __name__ == "__main__":
     main()

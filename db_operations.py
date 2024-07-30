@@ -413,3 +413,6 @@ def insert_new_user(username, hashed_password, email):
     conn.commit()
     cursor.close()
     conn.close()
+
+
+

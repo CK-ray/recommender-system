@@ -17,10 +17,13 @@ from services.content_recommendation import content_based_recommendation
 from services.hybrid_recommendation import hybrid_recommendation
 from services.feedback import update_feedback
 from services.conversational_qa import get_system_initiative, get_user_initiative
+from cryptography.fernet import Fernet
 
 app = Flask(__name__)
 app.config.from_object(Config)
 SECRET_KEY = app.config['SECRET_KEY']
+ENCRYPTION_KEY = Config.ENCRYPTION_KEY
+cipher = Fernet(ENCRYPTION_KEY)
 
 CORS(app, resources={r"/*": {"origins": "*"}})
 
@@ -29,7 +32,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 def generate_token(user_id):
     payload = {
         'user_id': user_id,
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)  # 令牌有效期为1天
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
     return token
@@ -242,6 +245,7 @@ def system_initiative():
 def user_initiative():
     return get_user_initiative()
 
+
 @app.route('/api/login', methods=['POST'])
 def login_user():
     data = request.json
@@ -249,17 +253,19 @@ def login_user():
     password = data.get('password')
 
     user = db_operations.get_user_by_username(username)
-    if user and bcrypt.checkpw(password.encode('utf-8'), user[2].encode('utf-8')):  # 检查哈希密码
-        token = generate_token(user[0])
-        user_info = {
-            "user_id": user[0],
-            "username": user[1],
-            "email": user[3],
-            "preferred_genres": user[4]
-        }
-        return jsonify({'token': token, 'user': user_info})
+    if user is None:
+        return jsonify({"error": "Invalid username"}), 401
+    elif not bcrypt.checkpw(password.encode('utf-8'), user[2].encode('utf-8')):
+        return jsonify({"error": "Invalid password"}), 401
 
-    return jsonify({"error": "Invalid username or password"}), 401
+    token = generate_token(user[0])
+    user_info = {
+        "user_id": user[0],
+        "username": user[1],
+        "email": user[3],
+        "preferred_genres": user[4]
+    }
+    return jsonify({'token': token, 'user': user_info})
 
 
 
